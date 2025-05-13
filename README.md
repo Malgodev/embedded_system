@@ -9,7 +9,7 @@ http://127.0.0.1:8000/api/audio/
 
 để upload 1 wav lên để convert thành text
 cùng api ở trên, kéo xuống dưới cùng
-![API](media\image\post.png "Post audio")
+![API](media\image\post.png)
 
 sau khi post, sẽ có reponse như sau
 
