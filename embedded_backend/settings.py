@@ -135,3 +135,8 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 AUDIO_FOLDER = os.path.join(MEDIA_ROOT, 'audio_files')
+
+from dotenv import load_dotenv
+load_dotenv()
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
