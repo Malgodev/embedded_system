@@ -1,5 +1,6 @@
 import os
 import requests
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,7 +11,73 @@ from .speech_generator import SpeechProcessor
 import uuid
 from django.conf import settings
 
+logger = logging.getLogger(__name__)
+
 # Create your views here.
+class RawAudioUploadViewSet(viewsets.ViewSet):
+    """ViewSet for handling raw WAV uploads from ESP32 with chunked encoding"""
+    parser_classes = [FileParser]  # Use FileParser for raw data
+
+    @action(detail=False, methods=['post'], url_path='')
+    def create(self, request):
+        """Handle POST requests with raw audio/wav data"""
+        if request.content_type != "audio/wav":
+            logger.error(f"Invalid Content-Type: {request.content_type}")
+            return Response(
+                {"error": "Expected Content-Type: audio/wav"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Ensure audio_files directory exists
+            upload_dir = settings.AUDIO_FOLDER
+            os.makedirs(upload_dir, exist_ok=True)
+
+            # Generate filename with timestamp
+            timestamp = str(int(time.time()))
+            filename = f"recording_{timestamp}.wav"
+            file_path = os.path.join(upload_dir, filename)
+
+            # Stream chunked data to file
+            total_bytes = 0
+            with open(file_path, "wb") as f:
+                for chunk in request.streaming_content:
+                    total_bytes += len(chunk)
+                    f.write(chunk)
+
+            logger.info(f"Saved file: {filename}, Size: {total_bytes} bytes")
+
+            # Calculate duration (16 kHz, 16-bit, mono)
+            duration_sec = (total_bytes - 44) / (16000 * 2)
+
+            # Save to AudioFile model
+            audio_file_instance = AudioFile.objects.create(
+                audio_file=f"audio_files/{filename}",
+                original_filename=filename
+            )
+
+            # Process transcription
+            processor = AudioProcessor()
+            result = processor.convert_wav_to_text(file_path)
+            audio_file_instance.save_transcription(result)
+
+            # Return response similar to Express
+            return Response({
+                "status": "success",
+                "filename": filename,
+                "url": f"http://{request.get_host()}{settings.MEDIA_URL}audio_files/{filename}",
+                "transcription": result.get("text") if result.get("success") else None,
+                "transcription_error": result.get("error") if not result.get("success") else None
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"Error processing upload: {str(e)}")
+            return Response(
+                {"error": f"Upload failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 class AudioFileViewSet(viewsets.ModelViewSet):
     """ViewSet for handling audio file uploads and transcription"""
     
